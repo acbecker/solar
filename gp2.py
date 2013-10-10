@@ -69,10 +69,11 @@ def runGaussianProcess((args, regr)):
                              random_start=1)
 
     gpres = gp.fit(gcoords, vals)
-    pred, varpred = gp.predict(mcoords, eval_MSE=True)
-    sigpred = np.sqrt(varpred)
+    pred = gp.predict(mcoords) #, eval_MSE=True) # Speed this thing up!
+    #pred, varpred = gp.predict(mcoords) #, eval_MSE=True) # Speed this thing up!
+    #sigpred = np.sqrt(varpred)
     
-    return pred, sigpred
+    return pred, #, sigpred
 
 if __name__ == "__main__":
     switch   = sys.argv[1]
@@ -147,10 +148,9 @@ if __name__ == "__main__":
     gcoords = np.array(zip(glats,glons))
 
     # Get ready to run all the GP
-    pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    pool.map(int, range(multiprocessing.cpu_count()))  # Trick to "warm up" the Pool
+    pool = multiprocessing.Pool(multiprocessing.cpu_count()//2) # high mem!
 
-    tsteps = range(1796 * 11 * 5)
+    tsteps = range(npts * 11 * 5)
 
     for dologit in (False, True):
         if dologit:

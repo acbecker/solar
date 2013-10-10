@@ -275,15 +275,15 @@ if __name__ == "__main__":
     gps = cPickle.load(buff)
     buff.close()
     stride = 5
-    npred  = 3
-    domean = False
+    npred  = 0
+    dosum  = True
     for key in mesonets.keys():
         mesonets[key].pdatap = gps[key].pdata[npred::stride,0] # ,0 for mean  ,1 for std
-    if domean:
+    if dosum:
         for key1 in mesonets.keys():
             for key2 in mesonets[key].pdatap.dtype.names:
                 for i in range(len(mesonets[key].pdatap[key2])):
-                    mesonets[key].pdatap[key2][i] = np.mean(gps[key].pdata[key2][i*5:i*5+5,0])
+                    mesonets[key].pdatap[key2][i] = np.sum(gps[key].pdata[key2][i*5:i*5+5,0])
 
     # Load previous interpolations of training data
     buff = open("gp_train.pickle", "rb")
@@ -291,11 +291,11 @@ if __name__ == "__main__":
     buff.close()
     for key in mesonets.keys():
         mesonets[key].pdatat = gps[key].pdata[npred::stride,0]
-    if domean:
+    if dosum:
         for key1 in mesonets.keys():
             for key2 in mesonets[key].pdatat.dtype.names:
                 for i in range(len(mesonets[key].pdatat[key2])):
-                    mesonets[key].pdatat[key2][i] = np.mean(gps[key].pdata[key2][i*5:i*5+5,0])
+                    mesonets[key].pdatat[key2][i] = np.sum(gps[key].pdata[key2][i*5:i*5+5,0])
 
     #animateGpData(mesonets, "tmax_2m")
     #plotGpData(mesonets, "tmax_2m", 1)
