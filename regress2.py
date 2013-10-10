@@ -171,6 +171,7 @@ if __name__ == "__main__":
     # Regress each Mesonet site on its own
     for mKey in mesonets.keys():
 
+        # Look at each ensemble, one by one
         pKey     = 0 # which prediction, nelement * nhour
         for eKey in range(11): # which element
             for hKey in range(5): # which hour
@@ -188,19 +189,35 @@ if __name__ == "__main__":
 
                 regressLoop(featt, fluxt)
                 pKey += 1
-                continue
 
+        # Now average over all ensembles, select each hour
+        hstride = 5
+        for hKey in range(5): # which hour
 
+            print "%s %d" % (mKey, pKey)
 
-                model = regress(featt, fluxt)
+            featt = np.empty((NPTSt, len(fKeys) + 2 * useAstro))
+            for f in range(len(fKeys)):
+                fKey       = fKeys[f]
+                featt[:,f] = np.ravel(np.mean(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1))[hKey::hstride]
+            if useAstro:
+                featt[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
+                featt[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
+            fluxt = mesonets[mKey].datat["flux"]
 
-                featp = np.empty((NPTSp, len(fKeys) + 2 * useAstro))
-                for f in range(len(fKeys)):
-                    fKey       = fKeys[f]
-                    featp[:,f] = pred[mKey].pdata[pKey::stride][fKey]
-                if useAstro:
-                    featp[:,len(fKeys)]    = mesonets[mKey].datap["sun_alt"]
-                    featp[:,len(fKeys)+1]  = mesonets[mKey].datap["moon_phase"]
-                fluxp  = model.predict(featp)
-                
+            regressLoop(featt, fluxt)
             pKey += 1
+
+
+#                model = regress(featt, fluxt)
+#
+#                featp = np.empty((NPTSp, len(fKeys) + 2 * useAstro))
+#                for f in range(len(fKeys)):
+#                    fKey       = fKeys[f]
+#                    featp[:,f] = pred[mKey].pdata[pKey::stride][fKey]
+#                if useAstro:
+#                    featp[:,len(fKeys)]    = mesonets[mKey].datap["sun_alt"]
+#                    featp[:,len(fKeys)+1]  = mesonets[mKey].datap["moon_phase"]
+#                fluxp  = model.predict(featp)
+#                
+#            pKey += 1
