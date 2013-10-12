@@ -152,19 +152,35 @@ if __name__ == "__main__":
 
     tsteps = range(npts * 11 * 5)
 
-    for dologit in (False, True):
+    #for dologit in (False, True):
+    for dologit in (True,):
         if dologit:
-            fmins = {}
-            fmaxs = {}
-            for key in fKeys:
-                fmins[key]      = gefs.data[key].min()
-                gefs.data[key] -= fmins[key]
-                fmaxs[key]      = gefs.data[key].max()
-                gefs.data[key] /= fmaxs[key] * 1.02
-                gefs.data[key] += 0.01
+            if os.path.isfile("logit.pickle"):
+                print "# READING LOGIT PICKLE"
+                buff        = open("logit.pickle", "rb")
+                fmins,fmaxs = cPickle.load(buff)
+                buff.close()
+                # Warning that this was set with the test data, hopefully the training data don't have different ranges...?
+                for key in fKeys:
+                    gefs.data[key] -= fmins[key]
+                    gefs.data[key] /= fmaxs[key] * 1.02
+                    gefs.data[key] += 0.01
+                    logit = np.log(gefs.data[key] / (1.0 - gefs.data[key]))
+                    gefs.data[key]  = logit
+            else:
+                sys.exit(1)
+                # logit.py should now do this 
 
-                logit = np.log(gefs.data[key] / (1.0 - gefs.data[key]))
-                gefs.data[key]  = logit
+                fmins = {}
+                fmaxs = {}
+                for key in fKeys:
+                    fmins[key]      = gefs.data[key].min()
+                    gefs.data[key] -= fmins[key]
+                    fmaxs[key]      = gefs.data[key].max()
+                    gefs.data[key] /= fmaxs[key] * 1.02
+                    gefs.data[key] += 0.01
+                    logit = np.log(gefs.data[key] / (1.0 - gefs.data[key]))
+                    gefs.data[key]  = logit
 
         args   = []
         for tstep in tsteps:

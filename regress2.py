@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 import multiprocessing
 import cPickle
-import ephem
+#import ephem
 import matplotlib.pyplot as plt
 import types
 from sklearn.gaussian_process import GaussianProcess
@@ -125,18 +125,29 @@ if __name__ == "__main__":
     trainFile  = "gp2_train_%s.pickle" % (suffix)
     predFile   = "gp2_pred_%s.pickle" % (suffix)
 
-    buff = open(trainFile, "rb")
-    train = cPickle.load(buff)
-    buff.close()
 
-    buff = open(predFile, "rb")
-    pred = cPickle.load(buff)
-    buff.close()
+    if suffix.find("logit") > -1:
+        buff = open(trainFile, "rb")
+        train, fmin, fmax = cPickle.load(buff)
+        buff.close()
 
-    # Crap, what to do about Logit transform..?
+        buff = open(predFile, "rb")
+        pred, fmin, fmax = cPickle.load(buff)
+        buff.close()
+    else:
+        buff = open(trainFile, "rb")
+        train = cPickle.load(buff)
+        buff.close()
 
-    pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    pool.map(int, range(multiprocessing.cpu_count()))  # Trick to "warm up" the Pool
+        buff = open(predFile, "rb")
+        pred = cPickle.load(buff)
+        buff.close()
+
+    # QUESTION: do we logit the flux?  Not sure, might screw up CV interpretation
+
+
+    #pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    #pool.map(int, range(multiprocessing.cpu_count()))  # Trick to "warm up" the Pool
 
     # Need to load the positions and times of training data
     sdata = np.loadtxt("../station_info.csv", delimiter=",", skiprows=1, 
@@ -208,16 +219,48 @@ if __name__ == "__main__":
             regressLoop(featt, fluxt)
             pKey += 1
 
+    # Now regress all sites at once
+    stride   = 11 * 5
+    pKey     = 0 # which prediction, nelement * nhour
+    for eKey in range(11): # which element
+        for hKey in range(5): # which hour
 
-#                model = regress(featt, fluxt)
-#
-#                featp = np.empty((NPTSp, len(fKeys) + 2 * useAstro))
-#                for f in range(len(fKeys)):
-#                    fKey       = fKeys[f]
-#                    featp[:,f] = pred[mKey].pdata[pKey::stride][fKey]
-#                if useAstro:
-#                    featp[:,len(fKeys)]    = mesonets[mKey].datap["sun_alt"]
-#                    featp[:,len(fKeys)+1]  = mesonets[mKey].datap["moon_phase"]
-#                fluxp  = model.predict(featp)
-#                
-#            pKey += 1
+            print "ALL %d" % (pKey)
+
+            featt = np.empty((NPTSt * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
+            fluxt = np.empty((NPTSt * len(mesonets.keys())))
+            fIdx  = 0
+            for mKey in mesonets.keys():
+                for f in range(len(fKeys)):
+                    fKey       = fKeys[f]
+                    featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),f] = train[mKey].pdata[pKey::stride][fKey]
+                #if useAstro:
+                #    featt[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
+                #    featt[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
+                fluxt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt)] = mesonets[mKey].datat["flux"]
+                fIdx += 1
+
+            regressLoop(featt, fluxt)
+            pKey += 1
+
+    # Now average over all ensembles, select each hour
+    hstride = 5
+    for hKey in range(5): # which hour
+
+        print "ALL %d" % (pKey)
+        featt = np.empty((NPTSt * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
+        fluxt = np.empty((NPTSt * len(mesonets.keys())))
+        fIdx  = 0
+        for mKey in mesonets.keys():
+            for f in range(len(fKeys)):
+                fKey       = fKeys[f]
+                featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),f] = \
+                    np.ravel(np.mean(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1))[hKey::hstride]
+            #if useAstro:
+            #    featt[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
+            #    featt[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
+                fluxt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt)] = mesonets[mKey].datat["flux"]
+
+        regressLoop(featt, fluxt)
+        pKey += 1
+    
