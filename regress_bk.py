@@ -41,6 +41,10 @@ fKeys = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm",
          "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
          "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
 
+wKeys = ("apcp_sfc", "pres_msl", "pwat_eatm",
+         "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
+         "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
+
 NPTSt = 5113  # Train
 NPTSp = 1796  # Predict
 
@@ -77,13 +81,15 @@ class Mesonet(object):
             data["moon_phase"][i] = moon.moon_phase
 
     def set_flux_weights(self, time, elevation):
+        # set weights at each forecast hour, proportional to the intensity of solar radiation as a function
+        # of airmass and elevation
         sun = ephem.Sun()
         obs = ephem.Observer()
         obs.lon = (self.elon * np.pi / 180)  # need radians
         obs.lat = (self.nlat * np.pi / 180)  # need radians
         obs.elevation = 0.0 # equation requires airmass at sea level
         fhours = ['12:00:00', '15:00:00', '18:00:00', '21:00:00', '24:00:00']
-        weights = np.empty((len(time), len(fhours)))
+        self.weights = np.zeros((len(time), len(fhours)))
         for i in range(len(time)):
             fh_idx = 0
             for fh in fhours:
@@ -92,14 +98,13 @@ class Mesonet(object):
                 zenith = 90.0 - sun.alt * (180.0 / np.pi)
                 zenith_rad = zenith * np.pi / 180.0
                 airmass = 1.0 / (np.cos(zenith_rad) + 0.50572 * (96.07995 - zenith) ** (-1.6364))
-                weights[i, fh_idx] = (1.0 - elevation / 7100.0) * (0.7 ** (airmass ** 0.678)) + elevation / 7100.0
+                self.weights[i, fh_idx] = (1.0 - elevation / 7100.0) * (0.7 ** (airmass ** 0.678)) + elevation / 7100.0
                 if sun.alt < 0.0:
                     # sun is below the horizon, so don't use this model run
-                    weights[i, fh_idx] = 0.0
+                    self.weights[i, fh_idx] = 0.0
                 fh_idx += 1
-            weights[i, :] = weights[i, :] / np.sum(weights[i, :])
+            self.weights[i, :] = self.weights[i, :] / np.sum(self.weights[i, :])
 
-        return weights
 
 def regress(args):
     features, flux = args
@@ -159,7 +164,7 @@ if __name__ == "__main__":
     sdates = [np.str(x) for x in fields[0]]
 
     # Do we do Astro terms?
-    useAstro = 0
+    useAstro = False
     if useAstro:
         for mesonet in mesonets.values():
             mesonet.setAstro(mesonet.dtimet, mesonet.datat)
@@ -169,85 +174,23 @@ if __name__ == "__main__":
     # Regress each Mesonet site on its own
     for mKey in mesonets.keys():
 
-        # Look at each ensemble, one by one
-        pKey = 0 # which prediction, nelement * nhour
-        for eKey in range(11): # which element
-            for hKey in range(5): # which hour
-
-                print "%s %d" % (mKey, pKey)
-
-                featt = np.empty((NPTSt, len(fKeys) + 2 * useAstro))
-                for f in range(len(fKeys)):
-                    fKey = fKeys[f]
-                    featt[:, f] = train[mKey].pdata[pKey::stride][fKey]
-                if useAstro:
-                    featt[:, len(fKeys)] = mesonets[mKey].datat["sun_alt"]
-                    featt[:, len(fKeys) + 1] = mesonets[mKey].datat["moon_phase"]
-                fluxt = mesonets[mKey].datat["flux"]
-
-                regressLoop(featt, fluxt)
-                pKey += 1
-
-        # Now average over all ensembles, select each hour
+        # Take median over all ensembles, select each hour
+        features = np.zeros((NPTSp, len(fKeys)))
         hstride = 5
+        h_idx = 0
         for hKey in range(5): # which hour
 
             print "%s %d" % (mKey, pKey)
 
-            featt = np.empty((NPTSt, len(fKeys) + 2 * useAstro))
+            featt = np.empty((NPTSt, len(fKeys)))
             for f in range(len(fKeys)):
                 fKey = fKeys[f]
                 featt[:, f] = np.ravel(np.mean(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1))[hKey::hstride]
-            if useAstro:
-                featt[:, len(fKeys)] = mesonets[mKey].datat["sun_alt"]
-                featt[:, len(fKeys) + 1] = mesonets[mKey].datat["moon_phase"]
-            fluxt = mesonets[mKey].datat["flux"]
+                if fKey in wKeys:
+                    featt[:, f] *= mesonets[mKey].weights[:, h_idx]
 
-            regressLoop(featt, fluxt)
-            pKey += 1
+            features += featt  # use a weighted average of the model runs over the forecast hours
+            h_idx += 1
 
-    # Now regress all sites at once
-    stride = 11 * 5
-    pKey = 0 # which prediction, nelement * nhour
-    for eKey in range(11): # which element
-        for hKey in range(5): # which hour
-
-            print "ALL %d" % (pKey)
-
-            featt = np.empty((NPTSt * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
-            fluxt = np.empty((NPTSt * len(mesonets.keys())))
-            fIdx = 0
-            for mKey in mesonets.keys():
-                for f in range(len(fKeys)):
-                    fKey = fKeys[f]
-                    featt[fIdx * NPTSt:(fIdx * NPTSt + NPTSt), f] = train[mKey].pdata[pKey::stride][fKey]
-                    #if useAstro:
-                #    featt[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
-                #    featt[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
-                fluxt[fIdx * NPTSt:(fIdx * NPTSt + NPTSt)] = mesonets[mKey].datat["flux"]
-                fIdx += 1
-
-            regressLoop(featt, fluxt)
-            pKey += 1
-
-    # Now average over all ensembles, select each hour
-    hstride = 5
-    for hKey in range(5): # which hour
-
-        print "ALL %d" % (pKey)
-        featt = np.empty((NPTSt * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
-        fluxt = np.empty((NPTSt * len(mesonets.keys())))
-        fIdx = 0
-        for mKey in mesonets.keys():
-            for f in range(len(fKeys)):
-                fKey = fKeys[f]
-                featt[fIdx * NPTSt:(fIdx * NPTSt + NPTSt), f] = \
-                    np.ravel(np.mean(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1))[hKey::hstride]
-                #if useAstro:
-                #    featt[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
-                #    featt[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
-                fluxt[fIdx * NPTSt:(fIdx * NPTSt + NPTSt)] = mesonets[mKey].datat["flux"]
-
-        regressLoop(featt, fluxt)
-        pKey += 1
-    
+        fluxt = mesonets[mKey].datat["flux"]
+        regress(features, fluxt)
