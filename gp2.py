@@ -27,8 +27,8 @@ fMapper = {
     "uswrf_sfc" : "Upward_Short-Wave_Rad_Flux"
     }
 
-fKeys = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm", 
-         "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m", 
+fKeys = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm",
+         "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
          "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
 
 # Minimal script for gaussian process estimation
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     gefss    = {}
     for key in fKeys:
         print "# LOADING", key
-    
+
         if switch == "train":
             f = h5py.File("../train/%s_latlon_subset_19940101_20071231.nc" % (key), "r")
         else:
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     #mcoords = np.array(zip(mlats,mlons,melevs))
     mcoords = np.array(zip(mlats,mlons))
 
-    # GEFS coords
+    # GEFS coordsgef
     glats = []
     glons = []
     gelevs = []

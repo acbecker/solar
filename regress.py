@@ -39,6 +39,7 @@ fMapper = {
 NPTSt = 5113  # Train
 NPTSp = 1796  # Predict
 
+
 # Minimal script for gaussian process estimation
 class Mesonet(object):
     dtimet = np.recarray((NPTSt,1), dtype={"names": ("time",),
