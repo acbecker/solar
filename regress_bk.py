@@ -113,7 +113,7 @@ class Mesonet(object):
 
 def regress(args):
     features, flux, depth = args
-    gbr = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=10000, subsample=0.5, max_depth=depth, verbose=1,
+    gbr = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=10000, subsample=0.5, max_depth=depth,
                                              learning_rate=0.01)
     gbr.fit(features, flux)
     oob_error = -np.cumsum(gbr.oob_improvement_)
@@ -215,7 +215,9 @@ if __name__ == "__main__":
             validate_set.append((featt[:3500], fluxt[:3500]))
 
         # predict values to get optimal tree depth
+        print 'Running GBRs with maximum tree depth of', depth, '...'
         gbrs = pool.map(regress, train_args)
+        print 'Finished'
 
         # gbrs = regress(train_args[0])
 
