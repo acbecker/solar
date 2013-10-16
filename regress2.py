@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 import multiprocessing
 import cPickle
-#import ephem
+import ephem
 import matplotlib.pyplot as plt
 import types
 from sklearn.gaussian_process import GaussianProcess
@@ -69,12 +69,21 @@ class Mesonet(object):
         obs.lon       = (self.elon * np.pi / 180)  # need radians
         obs.lat       = (self.nlat * np.pi / 180)  # need radians
         obs.elevation = self.elev                  # meters
+
         for i in range(len(time)):
             obs.date = str(time[i])
             sun.compute(obs)
             moon.compute(obs)
-            data["sun_alt"][i] = float(180 / np.pi * sun.transit_alt)
-            data["moon_phase"][i] = moon.moon_phase
+
+            # LOGIT ASTRO TERMS
+            # Sun Alt goes from 0 to 90
+            # Moon phase goes from 0 to 1
+            salt   = float(180 / np.pi * sun.transit_alt)
+            salt  /= 90.0
+            mphase = moon.moon_phase
+
+            data["sun_alt"][i] = np.log(salt / (1.0 - salt))
+            data["moon_phase"][i] = np.log(mphase / (1.0 - mphase))
 
 
 def regress(args):
@@ -172,7 +181,7 @@ if __name__ == "__main__":
     sdates         = [np.str(x) for x in fields[0]]
 
     # Do we do Astro terms?
-    useAstro = 0
+    useAstro = 1
     if useAstro:
         for mesonet in mesonets.values():
             mesonet.setAstro(mesonet.dtimet, mesonet.datat)
@@ -234,9 +243,9 @@ if __name__ == "__main__":
                 for f in range(len(fKeys)):
                     fKey       = fKeys[f]
                     featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),f] = train[mKey].pdata[pKey::stride][fKey]
-                #if useAstro:
-                #    featt[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
-                #    featt[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
+                if useAstro:
+                    featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
+                    featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
                 fluxt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt)] = mesonets[mKey].datat["flux"]
                 fIdx += 1
 
@@ -256,10 +265,10 @@ if __name__ == "__main__":
                 fKey       = fKeys[f]
                 featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),f] = \
                     np.ravel(np.mean(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1))[hKey::hstride]
-            #if useAstro:
-            #    featt[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
-            #    featt[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
-                fluxt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt)] = mesonets[mKey].datat["flux"]
+            if useAstro:
+                featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
+                featt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt),len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
+            fluxt[fIdx*NPTSt:(fIdx*NPTSt + NPTSt)] = mesonets[mKey].datat["flux"]
 
         regressLoop(featt, fluxt)
         pKey += 1
