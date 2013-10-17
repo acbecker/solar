@@ -182,6 +182,7 @@ if __name__ == "__main__":
     #### first get optimal depth of trees #####
     stride = 11 * 5
     depths = [1, 2, 3, 5, 7, 10]
+    # best depth = 5
     validation_errors = np.zeros(len(depths))
     d_idx = 0
     print 'Finding optimal tree depth...'
@@ -212,7 +213,7 @@ if __name__ == "__main__":
             fluxt = mesonets[mKey].datat["flux"]
 
             train_args.append((featt[:3500], fluxt[:3500], depth))
-            validate_set.append((featt[:3500], fluxt[:3500]))
+            validate_set.append((featt[3500:], fluxt[3500:]))
 
         # predict values to get optimal tree depth
         print 'Running GBRs with maximum tree depth of', depth, '...'
