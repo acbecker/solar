@@ -31,6 +31,7 @@ fKeys = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm",
          "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
          "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
 
+
 # Minimal script for gaussian process estimation
 class Mesonet(object):
     def __init__(self, stid, nlat, elon, elev, npts):

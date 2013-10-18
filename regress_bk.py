@@ -131,20 +131,7 @@ def regress(args):
     return gbr
 
 
-if __name__ == "__main__":
-
-    print "Loading Gaussian Process interpolates..."
-    trainFile = "gp2_train_constant.pickle"
-
-    buff = open(base_dir + trainFile, "rb")
-    train = cPickle.load(buff)
-    buff.close()
-
-    pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    pool.map(int, range(multiprocessing.cpu_count()))  # Trick to "warm up" the Pool
-
-    print 'Loading data for each Mesonet...'
-
+def build_mesonets():
     # Need to load the positions and times of training data
     sdata = np.loadtxt(base_dir + "station_info.csv", delimiter=",", skiprows=1,
                        dtype=[("stid", np.str_, 4),
@@ -178,6 +165,48 @@ if __name__ == "__main__":
         for mesonet in mesonets.values():
             mesonet.setAstro(mesonet.dtimet, mesonet.datat)
             mesonet.setAstro(mesonet.dtimep, mesonet.datap)
+
+    return mesonets
+
+
+def build_XY(mesonet, gp_interp, nX, useAstro):
+    # Take median over all ensembles, select each hour
+    hstride = 5
+    featt = np.zeros((nX, len(fKeys) + useAstro))
+
+    # Take median over all ensembles, select each hour
+    for hKey in range(5):  # which hour
+
+        for f in range(len(fKeys)):
+            fKey = fKeys[f]
+            # median over ensembles
+            feat_h = np.ravel(np.median(gp_interp.pdata[fKey].reshape((nX, 11, 5)), axis=1))[hKey::hstride]
+            feat_h *= mesonet.weights[:, hKey]
+            featt[:, f] += feat_h
+
+    if useAstro:
+        featt[:, len(fKeys)] = mesonet.datat["sun_alt"]
+    fluxt = mesonet.datat["flux"]
+
+    return featt, fluxt
+
+
+if __name__ == "__main__":
+
+    useAstro = True
+
+    print "Loading Gaussian Process interpolates..."
+    trainFile = "gp2_train_constant.pickle"
+
+    buff = open(base_dir + trainFile, "rb")
+    train = cPickle.load(buff)
+    buff.close()
+
+    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    pool.map(int, range(multiprocessing.cpu_count()))  # Trick to "warm up" the Pool
+
+    print 'Building data for each Mesonet...'
+    mesonets = build_mesonets()
 
     #### first get optimal depth of trees #####
     stride = 11 * 5
@@ -242,26 +271,7 @@ if __name__ == "__main__":
 
         print "%s " % mKey
 
-        # Take median over all ensembles, select each hour
-
-        hstride = 5
-        h_idx = 0
-        featt = np.zeros((NPTSt, len(fKeys) + useAstro))
-
-        # Take median over all ensembles, select each hour
-        for hKey in range(5):  # which hour
-
-            for f in range(len(fKeys)):
-                fKey = fKeys[f]
-                # median over ensembles
-                feat_h = np.ravel(np.median(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1))[hKey::hstride]
-                feat_h *= mesonets[mKey].weights[:, hKey]
-                featt[:, f] += feat_h
-
-        if useAstro:
-            featt[:, len(fKeys)] = mesonets[mKey].datat["sun_alt"]
-        fluxt = mesonets[mKey].datat["flux"]
-
+        featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, fKeys, useAstro)
         args.append((featt, fluxt, best_depth))
 
     # run gradient boosting regression
@@ -301,3 +311,4 @@ if __name__ == "__main__":
             plt.title(mKey)
             plt.savefig(base_dir + 'plots/' + mKey + '_gbr_partial_' + f + '.png')
             plt.close()
+            f_idx += 1
