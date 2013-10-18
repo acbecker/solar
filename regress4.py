@@ -191,6 +191,7 @@ if __name__ == "__main__":
             for hKey in range(5): # which hour
 
                 print "%s %d" % (mKey, pKey)
+                import pdb; pdb.set_trace()
 
                 feattr = np.empty((nTr, len(fKeys) + 2 * useAstro))
                 featcv = np.empty((nCv, len(fKeys) + 2 * useAstro))
@@ -232,6 +233,33 @@ if __name__ == "__main__":
 
             regressTest(feattr, featcv, fluxtr, fluxcv)
             pKey += 1
+
+        # Now average over all hours
+        print "%s %d" % (mKey, pKey)
+
+        feattr  = np.empty((nTr, len(fKeys) + 2 * useAstro))
+        featcv  = np.empty((nCv, len(fKeys) + 2 * useAstro))
+        for f in range(len(fKeys)):
+            fKey        = fKeys[f]
+            data        = np.mean(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1)
+            data        = np.ravel(np.mean(data, axis=1))
+            feattr[:,f] = data[:-nCv]
+            featcv[:,f] = data[-nCv:]
+        if useAstro:
+            feattr[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"][:-nCv]
+            feattr[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"][:-nCv]
+            featcv[:,len(fKeys)]    = mesonets[mKey].datat["sun_alt"][-nCv:]
+            featcv[:,len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"][-nCv:]
+        fluxtr = mesonets[mKey].datat["flux"][:-nCv]
+        fluxcv = mesonets[mKey].datat["flux"][-nCv:]
+
+        regressTest(feattr, featcv, fluxtr, fluxcv)
+        pKey += 1
+
+    ##########3
+    ##########3
+    ##########3
+    ##########3
 
     # Now regress all sites at once
     stride   = 11 * 5
@@ -293,4 +321,33 @@ if __name__ == "__main__":
 
         regressTest(feattr, featcv, fluxtr, fluxcv)
         pKey += 1
+    
+
+    # Now average over all hours
+    print "ALL %d" % (pKey)
+    feattr = np.empty((nTr * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
+    fluxtr = np.empty((nTr * len(mesonets.keys())))
+    featcv = np.empty((nCv * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
+    fluxcv = np.empty((nCv * len(mesonets.keys())))
+    fIdx  = 0
+    for mKey in mesonets.keys():
+        for f in range(len(fKeys)):
+            fKey       = fKeys[f]
+            data       = np.mean(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1)
+            data       = np.ravel(np.mean(data, axis=1))
+            feattr[fIdx*nTr:(fIdx*nTr + nTr),f] = data[:-nCv]
+            featcv[fIdx*nCv:(fIdx*nCv + nCv),f] = data[-nCv:]
+
+        if useAstro:
+            feattr[fIdx*nTr:(fIdx*nTr + nTr),len(fKeys)]    = mesonets[mKey].datat["sun_alt"][:-nCv]
+            feattr[fIdx*nTr:(fIdx*nTr + nTr),len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"][:-nCv]
+            featcv[fIdx*nCv:(fIdx*nCv + nCv),len(fKeys)]    = mesonets[mKey].datat["sun_alt"][-nCv:]
+            featcv[fIdx*nCv:(fIdx*nCv + nCv),len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"][-nCv:]
+
+        fluxtr[fIdx*nTr:(fIdx*nTr + nTr)] = mesonets[mKey].datat["flux"][:-nCv]
+        fluxcv[fIdx*nCv:(fIdx*nCv + nCv)] = mesonets[mKey].datat["flux"][-nCv:]
+        fIdx += 1
+
+    regressTest(feattr, featcv, fluxtr, fluxcv)
+    pKey += 1
     
