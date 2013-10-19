@@ -42,13 +42,13 @@ fMapper = {
     "uswrf_sfc": "Upward_Short-Wave_Rad_Flux"
 }
 
-fKeys = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm",
-         "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
-         "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
-
 wKeys = ("apcp_sfc", "pres_msl", "pwat_eatm",
          "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
          "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
+
+best_features = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm",
+                 "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
+                 "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc", "sun_alt")
 
 best_features = ["tmax_2m", "pres_msl", "dswrf_sfc", "pwat_eatm", "spfh_2m", "tmp_2m", "sun_alt"]
 
@@ -213,8 +213,7 @@ if __name__ == "__main__":
 
     #### first get optimal depth of trees #####
     stride = 11 * 5
-    depths = [1]
-    # depths = [1, 2, 3, 5, 7, 10]
+    depths = [1, 2, 3, 5, 7, 10]
     # best depth = 5
     validation_errors = np.zeros(len(depths))
     d_idx = 0
