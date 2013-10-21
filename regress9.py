@@ -37,9 +37,7 @@ fMapper = {
     "uswrf_sfc" : "Upward_Short-Wave_Rad_Flux"
     }
 
-fKeys = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm", 
-         "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m", 
-         "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
+fKeys = ("tmax_2m","pres_msl","dswrf_sfc","pwat_eatm","spfh_2m","tmp_2m")
 
 NPTSt = 5113  # Train
 NPTSp = 1796  # Predict
@@ -57,14 +55,13 @@ class Mesonet(object):
         self.elon  = elon
         self.elev  = elev
         # Measured data
-        self.datat = np.recarray((NPTSt,), dtype={"names": ("flux", "sun_alt", "moon_phase"),
-                                                  "formats": (np.int64, np.float64, np.float64)})
-        self.datap = np.recarray((NPTSp,), dtype={"names": ("flux", "sun_alt", "moon_phase"),
-                                                  "formats": (np.int64, np.float64, np.float64)})
+        self.datat = np.recarray((NPTSt,), dtype={"names": ("flux", "sun_alt"),
+                                                  "formats": (np.int64, np.float64)})
+        self.datap = np.recarray((NPTSp,), dtype={"names": ("flux", "sun_alt"),
+                                                  "formats": (np.int64, np.float64)})
 
     def setAstro(self, time, data):
         sun = ephem.Sun()
-        moon = ephem.Moon()
         obs = ephem.Observer()
         obs.lon       = (self.elon * np.pi / 180)  # need radians
         obs.lat       = (self.nlat * np.pi / 180)  # need radians
@@ -73,17 +70,13 @@ class Mesonet(object):
         for i in range(len(time)):
             obs.date = str(time[i])
             sun.compute(obs)
-            moon.compute(obs)
 
             # LOGIT ASTRO TERMS
             # Sun Alt goes from 0 to 90
-            # Moon phase goes from 0 to 1
             salt   = float(180 / np.pi * sun.transit_alt)
             salt  /= 90.0
-            mphase = moon.moon_phase
 
             data["sun_alt"][i] = np.log(salt / (1.0 - salt))
-            data["moon_phase"][i] = np.log(mphase / (1.0 - mphase))
 
 
 def regressTest(feattr, featcv, fluxtr, fluxcv):
@@ -134,6 +127,7 @@ def sigclip(data, switch):
 if __name__ == "__main__":
     
     suffix     = sys.argv[1]
+    useAstro   = 1
     trainFile  = "gp2_train_%s.pickle" % (suffix)
     predFile   = "gp2_pred_%s.pickle" % (suffix)
 
@@ -184,7 +178,6 @@ if __name__ == "__main__":
     sdates         = [np.str(x) for x in fields[0]]
 
     # Do we do Astro terms?
-    useAstro = 1
     if useAstro:
         for mesonet in mesonets.values():
             mesonet.setAstro(mesonet.dtimet, mesonet.datat)
@@ -197,8 +190,8 @@ if __name__ == "__main__":
     for mKey in mesonets.keys():
 
         print "%s" % (mKey)
-        feattr  = np.empty((nTr-1, 2*nFeat + 2 * useAstro))
-        featcv  = np.empty((nCv-1, 2*nFeat + 2 * useAstro))
+        feattr  = np.empty((nTr-1, 2*nFeat + useAstro))
+        featcv  = np.empty((nCv-1, 2*nFeat + useAstro))
         for f in range(nFeat):
             fKey        = fKeys[f]
             data1             = sigclip(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), True)
@@ -209,9 +202,7 @@ if __name__ == "__main__":
             featcv[:,f+nFeat] = data2[-nCv+1:]
         if useAstro:
             feattr[:,2*nFeat]    = mesonets[mKey].datat["sun_alt"][:-nCv][1:]
-            feattr[:,2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][:-nCv][1:]
             featcv[:,2*nFeat]    = mesonets[mKey].datat["sun_alt"][-nCv:][1:]
-            featcv[:,2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][-nCv:][1:]
         fluxtr = mesonets[mKey].datat["flux"][:-nCv][1:]
         fluxcv = mesonets[mKey].datat["flux"][-nCv:][1:]
 
@@ -224,9 +215,9 @@ if __name__ == "__main__":
 
     # Now regress all sites at once
     print "ALL"
-    feattr = np.empty(((nTr-1) * len(mesonets.keys()), 2*nFeat + 2 * useAstro))
+    feattr = np.empty(((nTr-1) * len(mesonets.keys()), 2*nFeat + useAstro))
     fluxtr = np.empty(((nTr-1) * len(mesonets.keys())))
-    featcv = np.empty(((nCv-1) * len(mesonets.keys()), 2*nFeat + 2 * useAstro))
+    featcv = np.empty(((nCv-1) * len(mesonets.keys()), 2*nFeat + useAstro))
     fluxcv = np.empty(((nCv-1) * len(mesonets.keys())))
     fIdx  = 0
     for mKey in mesonets.keys():
@@ -234,6 +225,7 @@ if __name__ == "__main__":
             fKey       = fKeys[f]
             data1      = sigclip(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), True)
             data2      = sigclip(data1, False)
+
             feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),f]       = data2[:-nCv][:-1]
             feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),f+nFeat] = data2[1:-nCv]
 
@@ -242,9 +234,7 @@ if __name__ == "__main__":
 
         if useAstro:
             feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),2*nFeat]    = mesonets[mKey].datat["sun_alt"][:-nCv][1:]
-            feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][:-nCv][1:]
             featcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1),2*nFeat]    = mesonets[mKey].datat["sun_alt"][-nCv:][1:]
-            featcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1),2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][-nCv:][1:]
 
         fluxtr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1)] = mesonets[mKey].datat["flux"][:-nCv][1:]
         fluxcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1)] = mesonets[mKey].datat["flux"][-nCv:][1:]

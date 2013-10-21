@@ -59,17 +59,21 @@ class GEFS(object):
                                                                  np.float64, np.float64, np.float64, np.float64, np.float64)})
 
 def runGaussianProcess((args, regr)):
-    nugmin = 0.05**2
+    nugmin = 0.025**2
     vals, mcoords, gcoords = args
 
     gp     = GaussianProcess(corr="squared_exponential", 
                              regr=regr,
                              theta0=1e-1, thetaL=1e-2, thetaU=1,
-                             normalize=False,
+                             normalize=True,
+                             nugget=nugmin,
                              random_start=1)
 
-    gpres = gp.fit(gcoords, vals)
-    pred = gp.predict(mcoords) #, eval_MSE=True) # Speed this thing up!
+    try:
+        gpres = gp.fit(gcoords, vals)
+        pred = gp.predict(mcoords) #, eval_MSE=True) # Speed this thing up!
+    except:
+        import pdb; pdb.set_trace()
     #pred, varpred = gp.predict(mcoords) #, eval_MSE=True) # Speed this thing up!
     #sigpred = np.sqrt(varpred)
     
@@ -153,7 +157,7 @@ if __name__ == "__main__":
     tsteps = range(npts * 11 * 5)
 
     #for dologit in (False, True):
-    for dologit in (True,):
+    for dologit in (False,):
         if dologit:
             if os.path.isfile("logit.pickle"):
                 print "# READING LOGIT PICKLE"
@@ -192,7 +196,10 @@ if __name__ == "__main__":
                 args.append((np.array(vals), mcoords, gcoords))
 
         for regr in ("constant", "linear", "quadratic"):
-            results = pool.map(runGaussianProcess, itertools.izip(args, itertools.repeat(regr)))
+            #results = pool.map(runGaussianProcess, itertools.izip(args, itertools.repeat(regr)))
+            results = []
+            for arg in args:
+                results.append(runGaussianProcess((arg, regr)))
     
             ridx = 0
             for tstep in tsteps:
@@ -205,12 +212,12 @@ if __name__ == "__main__":
                     ridx += 1
         
             if dologit:
-                datafile = "gp2_%s_%s_logit.pickle" % (switch, regr)
+                datafile = "gp2b_%s_%s_logit.pickle" % (switch, regr)
                 buff = open(datafile, "wb")
                 cPickle.dump((mesonets, fmins, fmaxs), buff)
                 buff.close()
             else:
-                datafile = "gp2_%s_%s.pickle" % (switch, regr)
+                datafile = "gp2b_%s_%s.pickle" % (switch, regr)
                 buff = open(datafile, "wb")
                 cPickle.dump(mesonets, buff)
                 buff.close()

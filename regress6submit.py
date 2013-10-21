@@ -18,6 +18,9 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning) 
 warnings.filterwarnings("ignore", category=UserWarning) 
 
+# NOTE, this one does cross-validation of the last 1000 points.
+# Instead of a random selections.  Duh...
+
 
 fMapper = {
     "apcp_sfc" : "Total_precipitation",
@@ -132,7 +135,7 @@ def sigclip(data, switch):
     return ma.mean(axis=1).data
 
 if __name__ == "__main__":
-    
+
     suffix     = sys.argv[1]
     trainFile  = "gp2_train_%s.pickle" % (suffix)
     predFile   = "gp2_pred_%s.pickle" % (suffix)
@@ -190,65 +193,63 @@ if __name__ == "__main__":
             mesonet.setAstro(mesonet.dtimet, mesonet.datat)
             mesonet.setAstro(mesonet.dtimep, mesonet.datap)
 
-    nCv      = 1000
+    nCv      = 0
     nTr      = NPTSt-nCv
-    nFeat    = len(fKeys)
-    # Regress each Mesonet site on its own
-    for mKey in mesonets.keys():
-
-        print "%s" % (mKey)
-        feattr  = np.empty((nTr-1, 2*nFeat + 2 * useAstro))
-        featcv  = np.empty((nCv-1, 2*nFeat + 2 * useAstro))
-        for f in range(nFeat):
-            fKey        = fKeys[f]
-            data1             = sigclip(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), True)
-            data2             = sigclip(data1, False)
-            feattr[:,f]       = data2[:-nCv][:-1]
-            feattr[:,f+nFeat] = data2[1:-nCv]
-            featcv[:,f]       = data2[-nCv:][:-1]
-            featcv[:,f+nFeat] = data2[-nCv+1:]
-        if useAstro:
-            feattr[:,2*nFeat]    = mesonets[mKey].datat["sun_alt"][:-nCv][1:]
-            feattr[:,2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][:-nCv][1:]
-            featcv[:,2*nFeat]    = mesonets[mKey].datat["sun_alt"][-nCv:][1:]
-            featcv[:,2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][-nCv:][1:]
-        fluxtr = mesonets[mKey].datat["flux"][:-nCv][1:]
-        fluxcv = mesonets[mKey].datat["flux"][-nCv:][1:]
-
-        regressTest(feattr, featcv, fluxtr, fluxcv)
-
-    ##########3
-    ##########3
-    ##########3
-    ##########3
 
     # Now regress all sites at once
     print "ALL"
-    feattr = np.empty(((nTr-1) * len(mesonets.keys()), 2*nFeat + 2 * useAstro))
-    fluxtr = np.empty(((nTr-1) * len(mesonets.keys())))
-    featcv = np.empty(((nCv-1) * len(mesonets.keys()), 2*nFeat + 2 * useAstro))
-    fluxcv = np.empty(((nCv-1) * len(mesonets.keys())))
+    feattr = np.empty((nTr * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
+    fluxtr = np.empty((nTr * len(mesonets.keys())))
     fIdx  = 0
     for mKey in mesonets.keys():
         for f in range(len(fKeys)):
             fKey       = fKeys[f]
             data1      = sigclip(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), True)
             data2      = sigclip(data1, False)
-            feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),f]       = data2[:-nCv][:-1]
-            feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),f+nFeat] = data2[1:-nCv]
-
-            featcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1),f]       = data2[-nCv:][:-1]
-            featcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1),f+nFeat] = data2[-nCv+1:]
+            feattr[fIdx*nTr:(fIdx*nTr + nTr),f] = data2
 
         if useAstro:
-            feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),2*nFeat]    = mesonets[mKey].datat["sun_alt"][:-nCv][1:]
-            feattr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1),2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][:-nCv][1:]
-            featcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1),2*nFeat]    = mesonets[mKey].datat["sun_alt"][-nCv:][1:]
-            featcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1),2*nFeat+1]  = mesonets[mKey].datat["moon_phase"][-nCv:][1:]
+            feattr[fIdx*nTr:(fIdx*nTr + nTr),len(fKeys)]    = mesonets[mKey].datat["sun_alt"]
+            feattr[fIdx*nTr:(fIdx*nTr + nTr),len(fKeys)+1]  = mesonets[mKey].datat["moon_phase"]
 
-        fluxtr[fIdx*(nTr-1):(fIdx*(nTr-1) + nTr-1)] = mesonets[mKey].datat["flux"][:-nCv][1:]
-        fluxcv[fIdx*(nCv-1):(fIdx*(nCv-1) + nCv-1)] = mesonets[mKey].datat["flux"][-nCv:][1:]
+        fluxtr[fIdx*nTr:(fIdx*nTr + nTr)] = mesonets[mKey].datat["flux"]
         fIdx += 1
 
-    regressTest(feattr, featcv, fluxtr, fluxcv)
-    
+    # Actual regression
+    model = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=1000)
+    fit   = model.fit(feattr, fluxtr)
+
+    # Output data
+    dnames  = ["Date"]
+    dtypes  = [np.dtype("a8")]
+    fmats   = ["%s"]
+    for key in sdata["stid"]:
+       dnames.append(key)
+       dtypes.append(np.float64)
+       fmats.append("%.1f")
+    outdata = np.recarray((len(Mesonet.dtimep,)), dtype={"names": dnames, "formats": dtypes})
+    outdata["Date"] = sdates
+
+    nPr    = NPTSp
+    featpr = np.empty((nPr * len(mesonets.keys()), len(fKeys) + 2 * useAstro))
+    fIdx   = 0
+    for mKey in mesonets.keys():
+        for f in range(len(fKeys)):
+            fKey       = fKeys[f]
+            data1      = sigclip(pred[mKey].pdata[fKey].reshape((NPTSp, 11, 5)), True)
+            data2      = sigclip(data1, False)
+            featpr[fIdx*nPr:(fIdx*nPr + nPr),f] = data2
+
+        if useAstro:
+            featpr[fIdx*nPr:(fIdx*nPr + nPr),len(fKeys)]    = mesonets[mKey].datap["sun_alt"]
+            featpr[fIdx*nPr:(fIdx*nPr + nPr),len(fKeys)+1]  = mesonets[mKey].datap["moon_phase"]
+
+        fIdx += 1
+        
+    fluxpr  = fit.predict(featpr)
+    for m in range(len(mesonets.keys())):
+        outdata[mesonets.keys()[m]] = fluxpr[m*nPr:(m*nPr + nPr)]
+
+    np.savetxt("%s_out6_%d.txt" % (suffix, useAstro), outdata, fmt=fmats, delimiter=",")
+    print ",".join(outdata.dtype.names)
+ 
