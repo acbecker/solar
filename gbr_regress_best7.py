@@ -46,11 +46,12 @@ wKeys = ("apcp_sfc", "pres_msl", "pwat_eatm",
          "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
          "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc")
 
+best_features = ["tmax_2m", "pres_msl", "dswrf_sfc", "pwat_eatm", "spfh_2m", "tmp_2m", "sun_alt"]
+
 best_features = ("apcp_sfc", "dlwrf_sfc", "dswrf_sfc", "pres_msl", "pwat_eatm",
                  "spfh_2m", "tcdc_eatm", "tcolc_eatm", "tmax_2m", "tmin_2m",
                  "tmp_2m", "tmp_sfc", "ulwrf_sfc", "ulwrf_tatm", "uswrf_sfc", "sun_alt")
 
-best_features = ["tmax_2m", "pres_msl", "dswrf_sfc", "pwat_eatm", "spfh_2m", "tmp_2m", "sun_alt"]
 
 NPTSt = 5113  # Train
 NPTSp = 1796  # Predict
@@ -117,8 +118,8 @@ class Mesonet(object):
 
 def regress(args):
     features, flux, depth = args
-    gbr = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=10000, subsample=0.5, max_depth=depth,
-                                             learning_rate=0.01)
+    gbr = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=1000, subsample=0.5, max_depth=depth,
+                                             learning_rate=0.1)
     gbr.fit(features, flux)
     oob_error = -np.cumsum(gbr.oob_improvement_)
 
@@ -217,6 +218,7 @@ if __name__ == "__main__":
     # best depth = 5
     validation_errors = np.zeros(len(depths))
     d_idx = 0
+    train_size = 3500
     print 'Finding optimal tree depth for each Mesonet...'
     for depth in depths:
         # Regress each Mesonet site on its own
@@ -228,8 +230,8 @@ if __name__ == "__main__":
 
             featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, best_features)
 
-            train_args.append((featt[:3500], fluxt[:3500], depth))
-            validate_set.append((featt[3500:], fluxt[3500:]))
+            train_args.append((featt[:train_size], fluxt[:train_size], depth))
+            validate_set.append((featt[train_size:], fluxt[train_size:]))
 
         # predict values to get optimal tree depth
         print 'Running GBRs with maximum tree depth of', depth, '...'
@@ -260,8 +262,8 @@ if __name__ == "__main__":
 
         featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, best_features)
 
-        train_args.append((featt[:3500], fluxt[:3500], best_depth))
-        validate_set.append((featt[3500:], fluxt[3500:]))
+        train_args.append((featt[:train_size], fluxt[:train_size], best_depth))
+        validate_set.append((featt[train_size:], fluxt[train_size:]))
 
     # predict values to get optimal tree depth
     print 'Running GBRs with maximum tree depth of', best_depth, '...'
@@ -286,21 +288,35 @@ if __name__ == "__main__":
             Xval_all = np.vstack((Xval_all, val_featt))
             yval_all = np.hstack((yval_all, val_fluxt))
 
-    del train_args, validate_set  # free memory
-
     d_idx = 0
+    print 'Shape of Xtrain_all:', Xtrain_all.shape
+    print 'Shape of Xval_all:', Xval_all.shape
     for depth in depths:
 
-        gbr_all = regress((Xtrain_all, ytrain_all, depth))
+        gbr_all = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=1000, subsample=0.5, max_depth=depth,
+                                                     learning_rate=0.1)
+        gbr_all.fit(Xtrain_all, ytrain_all)
+        oob_error = -np.cumsum(gbr.oob_improvement_)
+
+        do_plot = True
+        if do_plot:
+            plt.plot(oob_error)
+            plt.xlabel('# of trees')
+            plt.ylabel('LAD Error Relative to First Model')
+            plt.show()
+
+        gbr_all.n_estimators = oob_error.argmin() + 1
+        gbr_all.fit(Xtrain_all, ytrain_all)
 
         fpredict = gbr_all.predict(Xval_all)
-        validation_errors[d_idx] += np.mean(np.abs(fpredict - yval_all))
+        validation_errors[d_idx] = np.mean(np.abs(fpredict - yval_all))
 
     print 'Mean error as a function of tree depth (single regression):', validation_errors
     best_depth_all = depths[validation_errors.argmin()]
     print 'Using a depth of', best_depth_all
 
     print 'Rerunning GBR using this depth...'
+    gbr_all.max_depth = best_depth_all
     gbr_all = regress((Xtrain_all, ytrain_all, best_depth_all))
     print 'Finished'
 
@@ -324,6 +340,7 @@ if __name__ == "__main__":
         print 'Validation error is', valerr.min()
         weights[m_idx] = wgrid[valerr.argmin()]
         valerr_avg += valerr.min() / len(gbrs)
+        m_idx += 1
 
     print 'Average validation error for shrinkage estimate:', valerr_avg
     np.savetxt('gbr_weights.csv', weights, delimiter=',')
@@ -341,7 +358,7 @@ if __name__ == "__main__":
 
         print "%s " % mKey
 
-        featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, fKeys, useAstro)
+        featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, best_features)
         args.append((featt, fluxt, best_depth))
 
     # run gradient boosting regression
@@ -350,7 +367,7 @@ if __name__ == "__main__":
     # now save results
     print 'Pickling GBRs and Making plots...'
 
-    pfile = open(base_dir + 'data/all_mesonets_gbr_reduced_features.pickel', 'wb')
+    pfile = open(base_dir + 'data/all_mesonets_gbr_features.pickel', 'wb')
     cPickle.dump(gbr_all, pfile)
     pfile.close()
 
@@ -358,6 +375,6 @@ if __name__ == "__main__":
 
         print "%s " % mKey
 
-        pfile = open(base_dir + 'data/' + mKey + '_gbr_reduced_features.pickle', 'wb')
+        pfile = open(base_dir + 'data/' + mKey + '_gbr_features.pickle', 'wb')
         cPickle.dump(gbr, pfile)
         pfile.close()
