@@ -215,6 +215,7 @@ if __name__ == "__main__":
     #### first get optimal depth of trees #####
     stride = 11 * 5
     depths = [1, 2, 3, 5, 7, 10]
+    depths = [5]
     # best depth = 5
     validation_errors = np.zeros(len(depths))
     d_idx = 0
@@ -293,12 +294,14 @@ if __name__ == "__main__":
     print 'Shape of Xval_all:', Xval_all.shape
     for depth in depths:
 
-        gbr_all = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=1000, subsample=0.5, max_depth=depth,
-                                                     learning_rate=0.1)
-        gbr_all.fit(Xtrain_all, ytrain_all)
-        oob_error = -np.cumsum(gbr.oob_improvement_)
+        print 'Depth:', depth
 
-        do_plot = True
+        gbr_all = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=1000, subsample=0.5, max_depth=depth,
+                                                     learning_rate=0.1, verbose=1)
+        gbr_all.fit(Xtrain_all, ytrain_all)
+        oob_error = -np.cumsum(gbr_all.oob_improvement_)
+
+        do_plot = False
         if do_plot:
             plt.plot(oob_error)
             plt.xlabel('# of trees')
