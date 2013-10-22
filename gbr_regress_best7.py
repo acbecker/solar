@@ -185,7 +185,7 @@ def build_XY(mesonet, gp_interp, nX, features):
         for f in range(len(features) - 1):
             fKey = features[f]
             # median over ensembles
-            feat_h = np.ravel(np.median(gp_interp.pdata[fKey].reshape((nX, 11, 5)), axis=1))[hKey::hstride]
+            feat_h = np.ravel(gp_interp.pdata[fKey].reshape((nX, 5)))[hKey::hstride]
             feat_h *= mesonet.weights[:, hKey]
             featt[:, f] += feat_h
 
@@ -200,7 +200,7 @@ if __name__ == "__main__":
     useAstro = True
 
     print "Loading Gaussian Process interpolates..."
-    trainFile = "gp2_train_constant.pickle"
+    trainFile = "gp5_train_constant.pickle"
 
     buff = open(base_dir + trainFile, "rb")
     train = cPickle.load(buff)
