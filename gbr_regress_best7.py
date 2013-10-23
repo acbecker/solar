@@ -157,12 +157,12 @@ def build_mesonets():
     fields = np.loadtxt(base_dir + "sampleSubmission.csv", skiprows=1, delimiter=",", unpack=True).astype(np.int)
     dates = [np.datetime64(str(x)[:4] + "-" + str(x)[4:6] + "-" + str(x)[6:8]) for x in fields[0]]
     Mesonet.dtimep = dates
-    sdates = [np.str(x) for x in fields[0]]
 
     print 'Computing flux weights...'
 
     for mesonet in mesonets.values():
         mesonet.set_flux_weights(mesonet.dtimet)
+        mesonet.set_flux_weights(mesonet.dtimep)
 
     # Do we do Astro terms?
     useAstro = True
@@ -370,7 +370,7 @@ if __name__ == "__main__":
     # now save results
     print 'Pickling GBRs and Making plots...'
 
-    pfile = open(base_dir + 'data/all_mesonets_gbr_features.pickel', 'wb')
+    pfile = open(base_dir + 'data/all_mesonets_gbr_features.pickle', 'wb')
     cPickle.dump(gbr_all, pfile)
     pfile.close()
 
