@@ -215,7 +215,7 @@ if __name__ == "__main__":
     #### first get optimal depth of trees #####
     stride = 11 * 5
     depths = [1, 2, 3, 5, 7, 10]
-    depths = [5]
+    depths = [3, 5, 7]
     # best depth = 5
     validation_errors = np.zeros(len(depths))
     d_idx = 0
