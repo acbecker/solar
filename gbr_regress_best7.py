@@ -162,7 +162,6 @@ def build_mesonets():
 
     for mesonet in mesonets.values():
         mesonet.set_flux_weights(mesonet.dtimet)
-        mesonet.set_flux_weights(mesonet.dtimep)
 
     # Do we do Astro terms?
     useAstro = True

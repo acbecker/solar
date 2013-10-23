@@ -75,7 +75,7 @@ def build_X(mesonet, gp_interp, nX, features):
             feat_h *= mesonet.weights[:, hKey]
             featt[:, f] += feat_h
 
-    featt[:, len(features) - 1] = mesonet.datat["sun_alt"]
+    featt[:, len(features) - 1] = mesonet.datap["sun_alt"]
 
     return featt
 
@@ -120,6 +120,9 @@ if __name__ == "__main__":
 
     print 'Building data for each Mesonet...'
     mesonets = build_mesonets()
+
+    for mesonet in mesonets.values():
+        mesonet.set_flux_weights(mesonet.dtimep)
 
     # predict value using regression for each mesonet
     pfile = open(base_dir + 'data/all_mesonets_gbr_features.pickle', 'rb')
