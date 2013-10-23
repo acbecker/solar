@@ -199,7 +199,7 @@ if __name__ == "__main__":
     useAstro = True
 
     print "Loading Gaussian Process interpolates..."
-    trainFile = "gp5_train_constant.pickle"
+    trainFile = "gp2_train_constant.pickle"
 
     buff = open(base_dir + trainFile, "rb")
     train = cPickle.load(buff)
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     #### first get optimal depth of trees #####
     stride = 11 * 5
     depths = [1, 2, 3, 5, 7, 10]
-    depths = [3, 5, 7]
+    depths = [5]
     # best depth = 5
     validation_errors = np.zeros(len(depths))
     d_idx = 0
@@ -252,23 +252,25 @@ if __name__ == "__main__":
     best_depth = depths[validation_errors.argmin()]
     print 'Best depth is', best_depth
 
-    print 'Refitting GBRs with best depth...'
-    # Regress each Mesonet site on its own
-    train_args = []
-    validate_set = []
-    for mKey in mesonets.keys():
+    refit = False
+    if refit:
+        print 'Refitting GBRs with best depth...'
+        # Regress each Mesonet site on its own
+        train_args = []
+        validate_set = []
+        for mKey in mesonets.keys():
 
-        print "%s " % mKey
+            print "%s " % mKey
 
-        featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, best_features)
+            featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, best_features)
 
-        train_args.append((featt[:train_size], fluxt[:train_size], best_depth))
-        validate_set.append((featt[train_size:], fluxt[train_size:]))
+            train_args.append((featt[:train_size], fluxt[:train_size], best_depth))
+            validate_set.append((featt[train_size:], fluxt[train_size:]))
 
-    # predict values to get optimal tree depth
-    print 'Running GBRs with maximum tree depth of', best_depth, '...'
-    gbrs = pool.map(regress, train_args)
-    print 'Finished'
+        # predict values to get optimal tree depth
+        print 'Running GBRs with maximum tree depth of', best_depth, '...'
+        gbrs = pool.map(regress, train_args)
+        print 'Finished'
 
     # now do same thing, but for all sites combined as a single regression
     print 'Running GBR on all sites at once...'
@@ -317,10 +319,11 @@ if __name__ == "__main__":
     best_depth_all = depths[validation_errors.argmin()]
     print 'Using a depth of', best_depth_all
 
-    print 'Rerunning GBR using this depth...'
-    gbr_all.max_depth = best_depth_all
-    gbr_all = regress((Xtrain_all, ytrain_all, best_depth_all))
-    print 'Finished'
+    if refit:
+        print 'Rerunning GBR using this depth...'
+        gbr_all.max_depth = best_depth_all
+        gbr_all = regress((Xtrain_all, ytrain_all, best_depth_all))
+        print 'Finished'
 
     # now find optimal weight
     wgrid = np.linspace(0.0, 1.0)
@@ -345,7 +348,7 @@ if __name__ == "__main__":
         m_idx += 1
 
     print 'Average validation error for shrinkage estimate:', valerr_avg
-    np.savetxt('gbr_weights.csv', weights, delimiter=',')
+    np.savetxt('gbr_gp2_weights.csv', weights, delimiter=',')
 
     print 'Fitting GBR using all the data, first single regression for all mesonets...'
     gbr_all.fit(np.vstack((Xtrain_all, Xval_all)), np.hstack((ytrain_all, yval_all)))
@@ -369,7 +372,7 @@ if __name__ == "__main__":
     # now save results
     print 'Pickling GBRs and Making plots...'
 
-    pfile = open(base_dir + 'data/all_mesonets_gbr_features.pickle', 'wb')
+    pfile = open(base_dir + 'data/all_mesonets_gbr_gp2_features.pickle', 'wb')
     cPickle.dump(gbr_all, pfile)
     pfile.close()
 
@@ -377,6 +380,6 @@ if __name__ == "__main__":
 
         print "%s " % mKey
 
-        pfile = open(base_dir + 'data/' + mKey + '_gbr_features.pickle', 'wb')
+        pfile = open(base_dir + 'data/' + mKey + '_gbr_gp2_features.pickle', 'wb')
         cPickle.dump(gbr, pfile)
         pfile.close()
