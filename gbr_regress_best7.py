@@ -184,7 +184,8 @@ def build_XY(mesonet, gp_interp, nX, features):
         for f in range(len(features) - 1):
             fKey = features[f]
             # median over ensembles
-            feat_h = np.ravel(gp_interp.pdata[fKey].reshape((nX, 5)))[hKey::hstride]
+            feat_h = np.ravel(np.median(gp_interp.pdata[fKey].reshape((nX, 11, 5)), axis=1))[hKey::hstride]
+            # feat_h = np.ravel(gp_interp.pdata[fKey].reshape((nX, 5)))[hKey::hstride]
             feat_h *= mesonet.weights[:, hKey]
             featt[:, f] += feat_h
 
@@ -205,7 +206,7 @@ if __name__ == "__main__":
     train = cPickle.load(buff)
     buff.close()
 
-    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
     pool.map(int, range(multiprocessing.cpu_count()))  # Trick to "warm up" the Pool
 
     print 'Building data for each Mesonet...'

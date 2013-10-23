@@ -71,7 +71,8 @@ def build_X(mesonet, gp_interp, nX, features):
         for f in range(len(features) - 1):
             fKey = features[f]
             # median over ensembles
-            feat_h = np.ravel(gp_interp.pdata[fKey].reshape((nX, 5)))[hKey::hstride]
+            feat_h = np.ravel(np.median(gp_interp.pdata[fKey].reshape((nX, 11, 5)), axis=1))[hKey::hstride]
+            # feat_h = np.ravel(gp_interp.pdata[fKey].reshape((nX, 5)))[hKey::hstride]
             feat_h *= mesonet.weights[:, hKey]
             featt[:, f] += feat_h
 
@@ -105,14 +106,14 @@ def build_submission_file(fluxp, mesonets):
     for m in range(len(mesonets.keys())):
         outdata[mesonets.keys()[m]] = fluxp[:, m]
 
-    np.savetxt(base_dir + 'solar/gbr_shrunken_prediction_bk.csv', outdata, fmt=fmats, delimiter=',')
+    np.savetxt(base_dir + 'solar/gbr_gp2_shrunken_prediction_bk.csv', outdata, fmt=fmats, delimiter=',')
     print ",".join(outdata.dtype.names)
 
 
 if __name__ == "__main__":
 
     print "Loading Gaussian Process interpolates..."
-    testFile = "gp5_test_constant.pickle"
+    testFile = "gp2_test_constant.pickle"
 
     buff = open(base_dir + testFile, "rb")
     test = cPickle.load(buff)
@@ -125,11 +126,11 @@ if __name__ == "__main__":
         mesonet.set_flux_weights(mesonet.dtimep)
 
     # predict value using regression for each mesonet
-    pfile = open(base_dir + 'data/all_mesonets_gbr_features.pickle', 'rb')
+    pfile = open(base_dir + 'data/all_mesonets_gbr_gp2_features.pickle', 'rb')
     gbr_all = cPickle.load(pfile)
     pfile.close()
 
-    weights = np.genfromtxt(base_dir + 'solar/gbr_weights.csv')
+    weights = np.genfromtxt(base_dir + 'solar/gbr_gp2_weights.csv')
 
     fluxp = np.zeros((NPTSp, len(mesonets)))
     m_idx = 0
@@ -145,7 +146,7 @@ if __name__ == "__main__":
         else:
             featt_stacked = np.vstack((featt_stacked, featt))
 
-        pfile = open(base_dir + 'data/' + mKey + '_gbr_features.pickle', 'rb')
+        pfile = open(base_dir + 'data/' + mKey + '_gbr__gp2_features.pickle', 'rb')
         gbr = cPickle.load(pfile)
         pfile.close()
 
