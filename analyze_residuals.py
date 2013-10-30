@@ -13,7 +13,8 @@ from sklearn.gaussian_process import GaussianProcess
 from sklearn.cross_validation import train_test_split
 from sklearn import metrics, linear_model, tree, ensemble
 from statsmodels.tsa.stattools import pacf
-from gbr_regress_best7 import Mesonet, build_XY, build_mesonets
+from matplotlib.mlab import detrend_mean
+from gbr_regress_best7 import build_mesonets
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/OK_solar/'
 
@@ -65,59 +66,75 @@ def make_pacf(args):
     plt.plot(resid, '.')
     plt.ylabel('Residual')
     plt.xlabel('Time')
+    plt.xlim(0, len(resid))
+    plt.subplot(223)
     lags = np.arange(0, len(pcf))
     plt.vlines(lags, 0.0, pcf, lw=6)
     plt.plot(plt.xlim(), [0, 0], 'k')
     plt.xlabel('Lag [days]')
-    plt.ylabel('PCF')
-    plt.show()
-    plt.savefig(base_dir + 'plots/' + mKey + '_resids.png')
+    plt.ylabel('PACF')
+    plt.subplot(224)
+    pspec, freq = plt.psd(resid, NFFT=1024, detrend=detrend_mean)
+    plt.xscale('log')
+    plt.xlabel('Frequency [1 / day]')
+    plt.ylabel('Power Spectrum')
+    plt.tight_layout()
+    #plt.show()
+    plt.savefig(base_dir + 'solar/plots/' + mKey + '_resids.png')
     plt.close()
+
+    return pcf, pspec, freq
+
 
 if __name__ == "__main__":
 
-    useAstro = True
-
-    print "Loading Gaussian Process interpolates..."
-    trainFile = "gp2_train_constant.pickle"
-
-    buff = open(base_dir + trainFile, "rb")
-    train = cPickle.load(buff)
+    buff = open(base_dir + 'solar/gp5_constant_resids12.pickle', "rb")
+    resids = cPickle.load(buff)
     buff.close()
+
+    nmesonets = 98
+    resids = resids.reshape((NPTSt, nmesonets))
 
     pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
     pool.map(int, range(multiprocessing.cpu_count()))  # Trick to "warm up" the Pool
 
-    print 'Building data for each Mesonet...'
     mesonets = build_mesonets()
 
-    # predict value using regression for each mesonet
-    pfile = open(base_dir + 'data/all_mesonets_gbr_gp2_features.pickle', 'rb')
-    gbr_all = cPickle.load(pfile)
-    pfile.close()
-
-    weights = np.genfromtxt(base_dir + 'solar/gbr_gp2_weights.csv')
-
-    m_idx = 0
-    print 'Making predictions...'
     args = []
+    m_idx = 0
     for mKey in mesonets.keys():
-
-        print "%s " % mKey
-
-        featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, best_features)
-
-        pfile = open(base_dir + 'data/' + mKey + '_gbr__gp2_features.pickle', 'rb')
-        gbr = cPickle.load(pfile)
-        pfile.close()
-
-        fluxp_single = gbr.predict(featt)
-        fluxp_all = gbr_all.predict(featt)
-        fluxp = (1.0 - weights[m_idx]) * fluxp_single + weights[m_idx] * fluxp_all
-
-        resid = fluxt - fluxp
-        args.append((resid, mKey))
+        args.append((resids[:, m_idx], mKey))
         m_idx += 1
 
-    map(make_pacf, args)
-    # pool.map(make_pacf, args)
+    print 'Computing PACFs...'
+
+    # results = map(make_pacf, args)
+    results = pool.map(make_pacf, args)
+
+    pacf_all = 0.0
+    pspec_all = 0.0
+    freq = results[0][2]
+
+    for r in results:
+        pacf_all += r[0]
+        pspec_all += r[1]
+
+    pacf_all /= len(results)
+    pspec_all /= len(pspec_all)
+
+    lags = np.arange(0, len(pacf_all))
+    plt.clf()
+    plt.vlines(lags, 0.0, pacf_all, lw=6)
+    plt.xlabel('Lag [days]')
+    plt.ylabel('PACF')
+    plt.title('Average over all Mesonets')
+    plt.savefig(base_dir + 'solar/plots/average_pacf.png')
+    plt.close()
+
+    plt.clf()
+    plt.loglog(freq, pspec_all, '-.', lw=3)
+    plt.xlabel('Frequency [1 / day]')
+    plt.ylabel('Power Spectrum')
+    plt.title('Average over all Mesonets')
+    plt.savefig(base_dir + 'solar/plots/average_psd.png')
+    plt.close()
