@@ -1,3 +1,5 @@
+__author__ = 'brandonkelly'
+
 import sys
 import os
 import numpy as np
@@ -7,10 +9,9 @@ import cPickle
 import ephem
 import matplotlib.pyplot as plt
 import types
-from sklearn.gaussian_process import GaussianProcess
-from sklearn.cross_validation import train_test_split
+from statsmodels.regression.quantile_regression import QuantReg
 from sklearn import metrics, linear_model, tree, ensemble
-import os
+
 
 # NOTE: endless empehm warnings
 # DeprecationWarning: PyOS_ascii_strtod and PyOS_ascii_atof are deprecated.  Use PyOS_string_to_double instead.
@@ -111,22 +112,29 @@ class Mesonet(object):
             self.weights[i, :] = self.weights[i, :] / np.sum(self.weights[i, :])
 
 
-def regress(args):
-    features, flux, depth = args
-    gbr = ensemble.GradientBoostingRegressor(loss="lad", n_estimators=10000, subsample=0.5, max_depth=depth,
-                                             learning_rate=0.01)
-    gbr.fit(features, flux)
+def roblin_regress(args):
+    features, flux = args
+    Xmat = np.column_stack((np.ones(len(flux)), features))
+    robreg = QuantReg(flux, Xmat).fit()
+
+    return robreg
+
+
+def boost_residuals(X, resid):
+
+    gbr = ensemble.GradientBoostingRegressor(loss='lad', max_depth=5, subsample=0.5, learning_rate=0.01,
+                                             n_estimators=10000)
+    gbr.fit(X, resid)
+
     oob_error = -np.cumsum(gbr.oob_improvement_)
+    plt.plot(oob_error)
+    plt.xlabel("# of estimators")
+    plt.ylabel("OOB MAE")
+    plt.show()
 
-    do_plot = False
-    if do_plot:
-        plt.plot(oob_error)
-        plt.xlabel('# of trees')
-        plt.ylabel('LAD Error Relative to First Model')
-        plt.show()
-
-    gbr.n_estimators = oob_error.argmin() + 1
-    gbr.fit(features, flux)
+    ntrees = np.max(np.array([np.argmin(oob_error) + 1, 5]))
+    gbr.n_estimators = ntrees
+    gbr.fit(X, resid)
 
     return gbr
 
@@ -180,12 +188,15 @@ def build_XY(mesonet, gp_interp, nX, useAstro):
         for f in range(len(fKeys)):
             fKey = fKeys[f]
             # median over ensembles
-            feat_h = np.ravel(np.median(gp_interp.pdata[fKey].reshape((nX, 11, 5)), axis=1))[hKey::hstride]
+            feat_h = np.ravel(gp_interp.pdata[fKey])[hKey::hstride]
             feat_h *= mesonet.weights[:, hKey]
             featt[:, f] += feat_h
 
     if useAstro:
-        featt[:, len(fKeys)] = mesonet.datat["sun_alt"]
+        zenith = 90.0 - mesonet.datat["sun_alt"] * np.pi / 180.0
+        airmass = 1.0 / (np.cos(zenith) + 0.50572 * (96.07995 - zenith * 180.0 / np.pi) ** (-1.6364))
+        featt[:, len(fKeys)] = np.log10(airmass)
+
     fluxt = mesonet.datat["flux"]
 
     return featt, fluxt
@@ -208,107 +219,50 @@ if __name__ == "__main__":
     print 'Building data for each Mesonet...'
     mesonets = build_mesonets()
 
-    #### first get optimal depth of trees #####
-    stride = 11 * 5
-    depths = [1, 2, 3, 5, 7, 10]
-    # best depth = 5
-    validation_errors = np.zeros(len(depths))
-    d_idx = 0
-    print 'Finding optimal tree depth...'
-    for depth in depths:
-        # Regress each Mesonet site on its own
-        train_args = []
-        validate_set = []
-        for mKey in mesonets.keys():
+    train_sets = []
+    test_sets = []
 
-            print "%s " % mKey
-
-            hstride = 5
-            h_idx = 0
-            featt = np.zeros((NPTSt, len(fKeys) + useAstro))
-
-            # Take median over all ensembles, select each hour
-            for hKey in range(5):  # which hour
-
-                for f in range(len(fKeys)):
-                    fKey = fKeys[f]
-                    # median over ensembles
-                    feat_h = np.ravel(np.median(train[mKey].pdata[fKey].reshape((NPTSt, 11, 5)), axis=1))[hKey::hstride]
-                    feat_h *= mesonets[mKey].weights[:, hKey]
-                    featt[:, f] += feat_h
-
-            if useAstro:
-                featt[:, len(fKeys)] = mesonets[mKey].datat["sun_alt"]
-            fluxt = mesonets[mKey].datat["flux"]
-
-            train_args.append((featt[:3500], fluxt[:3500], depth))
-            validate_set.append((featt[3500:], fluxt[3500:]))
-
-        # predict values to get optimal tree depth
-        print 'Running GBRs with maximum tree depth of', depth, '...'
-        gbrs = pool.map(regress, train_args)
-        print 'Finished'
-
-        # gbrs = regress(train_args[0])
-
-        valerr = 0.0
-        for gbr, val in zip(gbrs, validate_set):
-            fpredict = gbr.predict(val[0])
-            valerr += np.mean(np.abs(fpredict - val[1])) / len(gbrs)
-
-        validation_errors[d_idx] = valerr
-        d_idx += 1
-
-    print 'Mean error as a function of tree depth:', validation_errors
-    best_depth = depths[validation_errors.argmin()]
-
-    del train_args, validate_set  # free memory
-
-    # Now do this fit using all the data
-    print "Fitting GBR using all the data..."
-    args = []
     for mKey in mesonets.keys():
 
         print "%s " % mKey
 
-        featt, fluxt = build_XY(mesonets[mKey], train[mKey], NPTSt, fKeys, useAstro)
-        args.append((featt, fluxt, best_depth))
+        hstride = 5
+        h_idx = 0
+        X, y = build_XY(mesonets[mKey], train[mKey], NPTSt, useAstro)
 
-    # run gradient boosting regression
-    gbrs = pool.map(regress, args)
+        # TODO: reduce feature space in build_XY
+        train_sets.append((X[:3500, :], y[:3500]))
+        test_sets.append((X[3500:, :], y[3500:]))
 
-    # now save results and make feature importance and partial dependency plots
-    feature_labels = np.array(fMapper.values())
-    if useAstro:
-        feature_labels = np.append(feature_labels, "sun_alt")
+    print 'Doing robust linear regression ...'
+    robust_results = pool.map(roblin_regress, train_sets)
+    print 'Finished'
 
-    print 'Pickling GBRs and Making plots...'
+    # TODO: need to add in elevation and lat, long data, combine into one big data set
 
-    for gbr, tset, mKey in zip(gbrs, args, mesonets.keys()):
+    valerr = 0.0
+    idx = 0
+    for test, train, robreg in zip(test_sets, train_sets, robust_results):
+        ypredict = robreg.predict(np.column_stack((np.ones(test[1].size), test[0])))
+        valerr += np.mean(np.abs(ypredict - test[1])) / len(robust_results)
+        Xtrain = train[0]
+        if idx == 0:
+            Xall = Xtrain
+            resid = robreg.resid
+            Xtest_all = test[0]
+            ytest_all = test[1]
+        else:
+            Xall = np.vstack((Xall, Xtrain))
+            resid = np.hstack((resid robreg.resid))
+            Xtest_all = np.vstack((Xtest_all, test[0]))
+            ytest_all = np.vstack((ytest_all, test[1]))
 
-        print "%s " % mKey
+    print 'Mean error for linear model:', valerr
 
-        pfile = open(base_dir + 'data/' + mKey + '_gbr.pickle', 'wb')
-        cPickle.dump(gbr, pfile)
-        pfile.close()
+    print 'Boosting residuals...'
+    gbr = boost_residuals(Xall, resid)
 
-        fimportance = gbr.feature_importances_
-        fimportance = fimportance / fimportance.max()
-        sorted_idx = np.argsort(fimportance)
-        pos = np.arange(sorted_idx.size) + 0.5
-        plt.barh(pos, fimportance[sorted_idx], align='center')
-        plt.yticks(pos, feature_labels[sorted_idx])
-        plt.xlabel("Relative Importance")
-        plt.title("Importance of Variability Features: Gradient Boosted Regression")
-        plt.savefig(base_dir + 'plots/' + mKey + '_feature_importance_gbr.png')
-        plt.close()
+    ypredict = gbr.predict(Xtest_all)
+    valerr = np.mean(np.abs(ypredict - ytest_all))
 
-        f_idx = 0
-        for f in feature_labels:
-            plt.clf()
-            ensemble.partial_dependence.plot_partial_dependence(gbr, tset[0], [f_idx])
-            plt.xlabel(f)
-            plt.title(mKey)
-            plt.savefig(base_dir + 'plots/' + mKey + '_gbr_partial_' + f + '.png')
-            plt.close()
-            f_idx += 1
+    print 'Mean error after boosting residuals:', valerr
