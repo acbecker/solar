@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from statsmodels.regression.quantile_regression import QuantReg
 from sklearn import metrics, linear_model, tree, ensemble
 from sklearn.decomposition import PCA
-import hmlinmae_gibbs as hmlin
+# import hmlinmae_gibbs as hmlin
 
 # NOTE: endless empehm warnings
 # DeprecationWarning: PyOS_ascii_strtod and PyOS_ascii_atof are deprecated.  Use PyOS_string_to_double instead.
@@ -166,7 +166,7 @@ def hm_roblin(data):
 def boost_residuals(X, resid):
 
     gbr = ensemble.GradientBoostingRegressor(loss='lad', max_depth=5, subsample=0.5, learning_rate=0.1,
-                                             n_estimators=1000, verbose=1)
+                                             n_estimators=2000, verbose=1)
     gbr.fit(X, resid)
 
     do_plot = True
@@ -335,11 +335,11 @@ if __name__ == "__main__":
     trainFile = "gp5_train_constant.pickle"
     testFile = "gp5_test_constant.pickle"
     buff = open(base_dir + trainFile, "rb")
-    train = cPickle.load(buff)
+    gptrain = cPickle.load(buff)
     buff.close()
 
     buff = open(base_dir + testFile, "rb")
-    test = cPickle.load(buff)
+    gptest = cPickle.load(buff)
     buff.close()
 
     pool = multiprocessing.Pool(multiprocessing.cpu_count())
@@ -358,7 +358,7 @@ if __name__ == "__main__":
 
         hstride = 5
         h_idx = 0
-        X = build_X(mesonets[mKey], train[mKey], NPTSt)
+        X = build_X(mesonets[mKey], gptrain[mKey], NPTSt)
         y = np.log10(mesonets[mKey].datat["flux"])
 
         assert(np.all(np.isfinite(X)))
@@ -369,7 +369,7 @@ if __name__ == "__main__":
 
     print 'Doing robust linear regression ...'
     # robresults = roblin_regress(train_sets[0])
-    do_bayes = True
+    do_bayes = False
     if do_bayes:
         robust_results = hm_roblin(train_sets)
     else:
@@ -438,7 +438,7 @@ if __name__ == "__main__":
 
         print "%s " % mKey
 
-        X = build_X(mesonets[mKey], train[mKey], NPTSt)
+        X = build_X(mesonets[mKey], gptrain[mKey], NPTSt)
         y = np.log10(mesonets[mKey].datat['flux'])
         train_sets.append((X, y))
 
@@ -482,7 +482,7 @@ if __name__ == "__main__":
 
         print "%s " % mKey
 
-        X = build_X(mesonets[mKey], test[mKey], NPTSp)
+        X = build_X(mesonets[mKey], gptest[mKey], NPTSp)
 
         ypredict_linreg = robust_results[m_idx].predict(np.column_stack((np.ones(NPTSp), X)))
 
