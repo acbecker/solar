@@ -125,6 +125,7 @@ class roblin_wrapper(object):
         self.hmlin_model = hmlin_model
         self.m_idx = m_idx
         self.resid = 0.0
+        self.fittedvalues = 0.0
 
     def predict(self, X):
         ypredict = np.empty(X.shape[0])
@@ -139,7 +140,7 @@ def hm_roblin(data):
     X = []
     y = []
     for d in data:
-        X.append(d[0])
+        X.append(np.column_stack((np.ones(d[0].shape[0]), d[0])))
         y.append(d[1])
 
     nsamples = 10000
@@ -153,7 +154,9 @@ def hm_roblin(data):
     for thisX in X:
         print '...', m_idx + 1, '...'
         this_roblin = roblin_wrapper(samples, m_idx)
-        this_roblin.resid = y[m_idx] - this_roblin.predict(thisX)
+        yfit = this_roblin.predict(thisX)
+        this_roblin.resid = y[m_idx] - yfit
+        this_roblin.fittedvalues = yfit
         roblin.append(this_roblin)
         m_idx += 1
 
@@ -173,7 +176,9 @@ def boost_residuals(X, resid):
         plt.plot(oob_error)
         plt.xlabel("# of estimators")
         plt.ylabel("OOB MAE")
-        plt.show()
+        plt.savefig(base_dir + 'solar/plots/oob_error.png')
+        # plt.show()
+        plt.close()
 
     ntrees = np.max(np.array([np.argmin(oob_error) + 1, 5]))
     gbr.n_estimators = ntrees
@@ -191,12 +196,13 @@ def boost_residuals(X, resid):
         fimportance = fimportance / fimportance.max()
         sorted_idx = np.argsort(fimportance)
         pos = np.arange(sorted_idx.size) + 0.5
+        plt.clf()
         plt.barh(pos, fimportance[sorted_idx], align='center')
         plt.yticks(pos, feature_labels[sorted_idx])
         plt.xlabel("Relative Importance")
         plt.title("Importance of Variability Features: Gradient Boosted Regression")
         plt.tight_layout()
-        plt.savefig(base_dir + 'solar/plots/' + mKey + '_feature_importance_gbr.png')
+        plt.savefig(base_dir + 'solar/plots/feature_importance_gbr_resid.png')
         plt.close()
 
     return gbr
@@ -374,7 +380,9 @@ if __name__ == "__main__":
     valerr = 0.0
     idx = 0
     for test, train, robreg in zip(test_sets, train_sets, robust_results):
-        ypredict = robreg.predict(np.column_stack((np.ones(test[1].size), test[0])))
+        Xtest = np.insert(test[0], 0, np.ones(test[0].shape[0]), axis=1)
+        print 'Xtest shape:', Xtest.shape
+        ypredict = robreg.predict(Xtest)
         valerr += np.mean(np.abs(10.0 ** ypredict - 10.0 ** test[1])) / len(robust_results)
         Xtrain = train[0]
         mkey = mesonets.keys()[idx]
@@ -405,7 +413,7 @@ if __name__ == "__main__":
             Xtest = np.append(test[0], site_data[:nval, :], axis=1)
             Xtest_all = np.vstack((Xtest_all, Xtest))
             ytest_all = np.hstack((ytest_all, test[1]))
-            ypredict_linreg = np.vstack((ypredict_linreg, ypredict))
+            ypredict_linreg = np.hstack((ypredict_linreg, ypredict))
 
         idx += 1
 
